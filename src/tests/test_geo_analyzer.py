@@ -280,3 +280,85 @@ class TestGEOAnalyzer:
     def test_weights_integrity(self):
         total_weight = sum(GEO_WEIGHTS.values())
         assert round(total_weight, 5) == 1.0
+
+    def test_percentage_regex_matches_percent_sign(self):
+        html = "<html><body><p>Throughput improved by 45% while errors dropped by 12.5% across all nodes.</p></body></html>"
+        content = _make_content(html)
+        _, metrics, _ = GEOAnalyzer(content, _keywords())._analyze_statistical_density()
+        assert metrics["percentages_count"] == 2
+
+    def test_attribution_with_honorific_titles(self):
+        html = "<html><body><p>According to Dr. Jane Doe, the methodology is sound. And we can verify it independently.</p></body></html>"
+        content = _make_content(html)
+        _, metrics, _ = GEOAnalyzer(content, _keywords())._analyze_citations_and_quotes()
+        assert metrics["attribution_count"] >= 1
+
+    def test_inline_curly_quotes_detection(self):
+        html = "<html><body><p>Experts claim ‘generative optimization will redefine web discoverability in 2026’ without doubt.</p></body></html>"
+        content = _make_content(html)
+        _, metrics, _ = GEOAnalyzer(content, _keywords())._analyze_citations_and_quotes()
+        assert metrics["inline_quote_count"] >= 1
+
+    def test_readability_with_decimals_and_abbreviations(self):
+        # A single sentence with decimal numbers and common abbreviations should not split into multiple sentences
+        text = "According to Dr. Jane Doe, revenue grew by 4.5% in the U.S. market, which represents a solid milestone."
+        html = f"<html><body><p>{text}</p></body></html>"
+        content = _make_content(html)
+        _, metrics, _ = GEOAnalyzer(content, _keywords())._analyze_readability()
+        # Sentence count should be exactly 1, not 5
+        assert metrics["sentence_count"] == 1
+
+    def test_passage_salience_with_nested_container(self):
+        # Paragraph is nested in a div rather than an immediate sibling
+        html = """
+        <html>
+          <body>
+            <h2>What is Generative Engine Optimization?</h2>
+            <div class="content-wrapper">
+              <p>
+                Generative Engine Optimization is the practice of structuring digital content so that AI-powered search
+                engines can easily extract, comprehend, and cite the underlying facts and insights in answer summaries.
+              </p>
+            </div>
+            <h3>Why do citations matter in AI answers?</h3>
+            <div class="content-wrapper">
+              <p>
+                Authoritative citations provide verifiable grounding for large language models, reducing hallucinations
+                and elevating the credibility score of extracted passages during retrieval-augmented generation.
+              </p>
+            </div>
+          </body>
+        </html>
+        """
+        content = _make_content(html)
+        score, metrics, _ = GEOAnalyzer(content, _keywords())._analyze_passage_salience()
+        assert score == 100
+        assert metrics["direct_answers_count"] == 2
+
+    def test_structured_data_with_list_type_and_alternate_fields(self):
+        # Schema with list @type and mainEntity
+        html = """
+        <html>
+          <head>
+            <script type="application/ld+json">
+            {
+              "@context": "https://schema.org",
+              "@type": ["TechArticle", "LearningResource"],
+              "headline": "Advanced GEO Strategies",
+              "mainEntity": {
+                "@type": "Question",
+                "name": "How does GEO work?"
+              }
+            }
+            </script>
+          </head>
+          <body><p>Content</p></body>
+        </html>
+        """
+        content = _make_content(html)
+        score, metrics, _ = GEOAnalyzer(content, _keywords())._analyze_structured_data()
+        assert score == 100
+        assert "TechArticle" in metrics["detected_types"]
+        assert "LearningResource" in metrics["detected_types"]
+        assert metrics["has_essential_fields"] is True
+

@@ -31,26 +31,26 @@ GEO_WEIGHTS = {
 
 # Optimal ranges
 OPTIMAL_STAT_DENSITY_MIN = 1.0  # stats per 100 words
-OPTIMAL_STAT_DENSITY_MAX = 7.0
-OPTIMAL_RAG_CHUNK_MIN = 35     # words per direct answer paragraph
-OPTIMAL_RAG_CHUNK_MAX = 80
+OPTIMAL_STAT_DENSITY_MAX = 8.0
+OPTIMAL_RAG_CHUNK_MIN = 20     # words per direct answer paragraph (industry standard 20-80 words)
+OPTIMAL_RAG_CHUNK_MAX = 90
 OPTIMAL_FLESCH_MIN = 30.0      # technical/substantive content threshold
 OPTIMAL_FLESCH_MAX = 75.0
 
 # Attribution regex patterns
 ATTRIBUTION_PATTERNS = [
-    r"\baccording\s+to\s+[A-Z][a-zA-Z\s]+",
-    r"\b(?:study|research|survey|report)\s+(?:by|from|conducted\s+by)\s+[A-Z][a-zA-Z\s]+",
-    r"\b(?:as\s+stated|as\s+noted|as\s+reported)\s+by\s+[A-Z][a-zA-Z\s]+",
-    r"\bpublished\s+in\s+[A-Z][a-zA-Z\s]+",
-    r"\b(?:researchers|scientists|analysts|experts)\s+at\s+[A-Z][a-zA-Z\s]+",
+    r"(?i:\baccording\s+to\s+)(?:(?:Dr\.|Prof\.|Mr\.|Ms\.|Mrs\.)\s+)?[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*){0,4}",
+    r"(?i:\b(?:study|research|survey|report)\s+(?:by|from|conducted\s+by)\s+)(?:(?:Dr\.|Prof\.|Mr\.|Ms\.|Mrs\.)\s+)?[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*){0,4}",
+    r"(?i:\b(?:as\s+stated|as\s+noted|as\s+reported)\s+by\s+)(?:(?:Dr\.|Prof\.|Mr\.|Ms\.|Mrs\.)\s+)?[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*){0,4}",
+    r"(?i:\bpublished\s+in\s+)[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*){0,4}",
+    r"(?i:\b(?:researchers|scientists|analysts|experts)\s+at\s+)[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*){0,4}",
     r"\b[A-Z][a-z]+\s+et\s+al\.",
     r"\([A-Z][a-z]+(?:\s+and\s+[A-Z][a-z]+)?,\s*(?:19|20)\d{2}\)",
 ]
 
 # Interrogative heading patterns (questions that trigger answer generation)
 QUESTION_HEADING_PATTERN = re.compile(
-    r"^(?:what|how|why|when|where|which|who|can|is|are|do|does|will|should)\b|\?$",
+    r"(?:^|[:\d\.\-\s])\b(?:what|how|why|when|where|which|who|can|is|are|do|does|will|should)\b|\?$",
     re.IGNORECASE,
 )
 
@@ -131,7 +131,7 @@ class GEOAnalyzer(BaseAnalyzer):
         text = self.content.body_text or ""
 
         # Inline quotes: "...", “...”, ‘...’, «...»
-        inline_quotes = re.findall(r'["“«][^"”»]{10,250}["”»]', text)
+        inline_quotes = re.findall(r'["“«‘][^"”»’]{10,250}["”»’]', text)
 
         # Authoritative attribution detection
         attribution_matches = []
@@ -181,16 +181,16 @@ class GEOAnalyzer(BaseAnalyzer):
         word_count = max(1, self.content.word_count)
 
         # Percentages: 45%, 12.5 percent
-        percentages = re.findall(r"\b\d+(?:\.\d+)?\s*(?:%|percent|percentage)\b", text, re.IGNORECASE)
+        percentages = re.findall(r"\b\d+(?:\.\d+)?\s*(?:%|percent\b|percentage\b)", text, re.IGNORECASE)
 
-        # Currency figures: $500, €1.2M, £45,000
-        currencies = re.findall(r"[\$€£¥]\s*\d+(?:,\d{3})*(?:\.\d+)?(?:\s*(?:billion|million|k|m|b))?\b", text, re.IGNORECASE)
+        # Currency figures: $500, €1.2M, £45,000, 500 USD
+        currencies = re.findall(r"(?:[\$€£¥]\s*\d+(?:,\d{3})*(?:\.\d+)?(?:\s*(?:billion|million|k|m|b))?|\b\d+(?:,\d{3})*(?:\.\d+)?\s*(?:USD|EUR|GBP|dollars|euros)\b)", text, re.IGNORECASE)
 
-        # Quantitative metrics: 250 ms, 10x, 3.5 years, 10,000 users
-        metrics_found = re.findall(r"\b\d+(?:,\d{3})*(?:\.\d+)?\s*(?:x|times|fold|years|months|days|hours|minutes|seconds|users|customers|queries|tokens|GB|MB|TB|ms|kg|km)\b", text, re.IGNORECASE)
+        # Quantitative metrics: 250 ms, 10x, 3.5 years, 10,000 users, 100 MB/s
+        metrics_found = re.findall(r"\b\d+(?:,\d{3})*(?:\.\d+)?\s*(?:x|times|fold|years|months|days|hours|minutes|seconds|users|customers|queries|tokens|GB|MB|TB|PB|KB|ms|kg|km|GHz|MHz|fps|mph|km/h|Gbps|Mbps|MB/s|KB/s)\b", text, re.IGNORECASE)
 
-        # Statistical ratios / formulas: 1 in 4, p < 0.05, n = 500
-        stats_terms = re.findall(r"\b(?:p\s*[<>=]\s*0?\.\d+|n\s*=\s*\d+|\d+\s+in\s+\d+|\d+\s+out\s+of\s+\d+)\b", text, re.IGNORECASE)
+        # Statistical ratios / formulas: 1 in 4, p < 0.05, n = 500, r = 0.85
+        stats_terms = re.findall(r"\b(?:p\s*[<>=]\s*0?\.\d+|r\s*[<>=]\s*-?0?\.\d+|R\^?2\s*[<>=]\s*0?\.\d+|n\s*=\s*\d+|\d+\s+in\s+\d+|\d+\s+out\s+of\s+\d+|\d+\s*:\s*\d+)\b", text, re.IGNORECASE)
 
         total_stats = len(percentages) + len(currencies) + len(metrics_found) + len(stats_terms)
         stat_density = (total_stats / (word_count / 100.0))
@@ -231,15 +231,15 @@ class GEOAnalyzer(BaseAnalyzer):
         question_headings = []
         direct_answers = []
 
-        headings = soup.find_all(["h2", "h3"])
+        headings = soup.find_all(["h2", "h3", "h4"])
         for h in headings:
             h_text = h.get_text().strip()
             if QUESTION_HEADING_PATTERN.search(h_text):
                 question_headings.append(h_text)
-                # Find subsequent paragraph
-                next_p = h.find_next_sibling("p")
-                if next_p:
-                    p_words = next_p.get_text().split()
+                # Find subsequent paragraph before any next heading
+                next_elem = h.find_next(["p", "h1", "h2", "h3", "h4", "h5", "h6"])
+                if next_elem and next_elem.name == "p":
+                    p_words = next_elem.get_text().split()
                     word_len = len(p_words)
                     if OPTIMAL_RAG_CHUNK_MIN <= word_len <= OPTIMAL_RAG_CHUNK_MAX:
                         direct_answers.append({
@@ -295,17 +295,23 @@ class GEOAnalyzer(BaseAnalyzer):
                         for item in data["@graph"]:
                             if isinstance(item, dict):
                                 schemas.append(item)
-                                if "@type" in item:
+                                if isinstance(item.get("@type"), list):
+                                    detected_types.extend(str(t) for t in item["@type"])
+                                elif "@type" in item:
                                     detected_types.append(str(item["@type"]))
                     else:
                         schemas.append(data)
-                        if "@type" in data:
+                        if isinstance(data.get("@type"), list):
+                            detected_types.extend(str(t) for t in data["@type"])
+                        elif "@type" in data:
                             detected_types.append(str(data["@type"]))
                 elif isinstance(data, list):
                     for item in data:
                         if isinstance(item, dict):
                             schemas.append(item)
-                            if "@type" in item:
+                            if isinstance(item.get("@type"), list):
+                                detected_types.extend(str(t) for t in item["@type"])
+                            elif "@type" in item:
                                 detected_types.append(str(item["@type"]))
             except Exception:
                 pass
@@ -317,7 +323,7 @@ class GEOAnalyzer(BaseAnalyzer):
             for s in schemas:
                 # Check for essential properties that generative models rely on
                 has_name = bool(s.get("name") or s.get("headline"))
-                has_desc = bool(s.get("description"))
+                has_desc = bool(s.get("description") or s.get("mainEntity") or s.get("itemListElement") or s.get("articleBody"))
                 if has_name and has_desc:
                     has_essential_fields = True
                     break
@@ -356,8 +362,11 @@ class GEOAnalyzer(BaseAnalyzer):
                 "Content is too brief for fluency analysis. Expand content to improve ranking depth."
             ]
 
-        # Sentence extraction
-        sentences = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+        # Robust sentence extraction: protect decimals and common abbreviations
+        cleaned = re.sub(r"(\d+)\.(\d+)", r"\1__DEC__\2", text)
+        for abbr in ["Dr.", "Mr.", "Ms.", "Mrs.", "Prof.", "vs.", "e.g.", "i.e.", "U.S.", "Jan.", "Feb.", "Mar.", "Apr.", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."]:
+            cleaned = cleaned.replace(abbr, abbr.replace(".", "__DOT__"))
+        sentences = [s.strip().replace("__DEC__", ".").replace("__DOT__", ".") for s in re.split(r"[.!?]+(?:\s+|$)", cleaned) if s.strip()]
         sentence_count = max(1, len(sentences))
 
         # Syllable count estimation
